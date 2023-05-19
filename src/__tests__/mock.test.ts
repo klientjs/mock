@@ -1,8 +1,8 @@
 import Klient, { RequestEvent } from '@klient/core';
 
-import '../src';
+import '..';
 
-import type { Parameters, KlientExtended, Mock } from '../src';
+import type { Parameters, KlientExtended, Mock } from '..';
 
 jest.useFakeTimers();
 jest.spyOn(global, 'setTimeout');
