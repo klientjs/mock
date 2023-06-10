@@ -90,22 +90,22 @@ export default class Mocks {
       return;
     }
 
-    e.stopPropagation();
+    request.handler = () => {
+      const result = typeof mock.res === 'function' ? mock.res(config, parameters as ResParameters) : mock.res;
+      const { status } = result;
 
-    const result = typeof mock.res === 'function' ? mock.res(config, parameters as ResParameters) : mock.res;
-    const { status } = result;
+      if (status >= 200 && status < 400) {
+        return Promise.resolve(result as AxiosResponse);
+      }
 
-    if (status >= 200 && status < 400) {
-      return request.resolve(result as AxiosResponse);
-    }
+      const err = new AxiosError();
 
-    const err = new AxiosError();
+      err.message = statusCodes.getStatusText(status);
+      err.code = AxiosError.ERR_BAD_RESPONSE;
+      err.config = e.config;
+      err.response = result as AxiosResponse;
 
-    err.message = statusCodes.getStatusText(status);
-    err.code = AxiosError.ERR_BAD_RESPONSE;
-    err.config = e.config;
-    err.response = result as AxiosResponse;
-
-    return request.reject(err);
+      return Promise.reject(err);
+    };
   }
 }
