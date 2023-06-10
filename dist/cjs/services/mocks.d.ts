@@ -18,6 +18,6 @@ export default class Mocks {
     constructor(klient: Klient);
     mock(...mocks: Mock[]): this;
     private match;
-    private delay;
-    private static handle;
+    private handle;
+    private static renderResponse;
 }
