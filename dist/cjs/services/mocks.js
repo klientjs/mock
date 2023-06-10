@@ -57,18 +57,19 @@ class Mocks {
         if (config.signal.aborted || !mock) {
             return;
         }
-        e.stopPropagation();
-        const result = typeof mock.res === 'function' ? mock.res(config, parameters) : mock.res;
-        const { status } = result;
-        if (status >= 200 && status < 400) {
-            return request.resolve(result);
-        }
-        const err = new axios_1.AxiosError();
-        err.message = status_codes_1.default.getStatusText(status);
-        err.code = axios_1.AxiosError.ERR_BAD_RESPONSE;
-        err.config = e.config;
-        err.response = result;
-        return request.reject(err);
+        request.handler = () => {
+            const result = typeof mock.res === 'function' ? mock.res(config, parameters) : mock.res;
+            const { status } = result;
+            if (status >= 200 && status < 400) {
+                return Promise.resolve(result);
+            }
+            const err = new axios_1.AxiosError();
+            err.message = status_codes_1.default.getStatusText(status);
+            err.code = axios_1.AxiosError.ERR_BAD_RESPONSE;
+            err.config = e.config;
+            err.response = result;
+            return Promise.reject(err);
+        };
     }
 }
 exports.default = Mocks;
