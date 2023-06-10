@@ -1,4 +1,4 @@
-import { AxiosError } from 'axios';
+import { AxiosError, CanceledError } from 'axios';
 import Klient, { RequestEvent, KlientRequestConfig } from '@klient/core';
 
 import type { AxiosResponseHeaders, AxiosResponse } from 'axios';
@@ -26,9 +26,8 @@ export default class Mocks {
   private mocks: Mock[] = [];
 
   constructor(private readonly klient: Klient) {
-    klient.on('request', this.match.bind(this), -1001);
-    klient.on('request', this.delay.bind(this), -1002);
-    klient.on('request', Mocks.handle, -1003);
+    klient.on('request', this.match.bind(this), -1000);
+    klient.on('request', this.handle.bind(this), -Infinity);
   }
 
   mock(...mocks: Mock[]): this {
@@ -37,10 +36,6 @@ export default class Mocks {
   }
 
   private match(e: RequestEvent) {
-    if ((e.config.signal as AbortSignal).aborted) {
-      return;
-    }
-
     const { config } = e;
 
     for (let i = 0, len = this.mocks.length, parameters: ResParameters = {}; i < len; i += 1) {
@@ -66,46 +61,65 @@ export default class Mocks {
     }
   }
 
-  private delay(e: RequestEvent) {
-    const { config, context } = e;
+  private handle(e: RequestEvent) {
+    const { context, request } = e;
     const { mock } = context as { mock?: Mock };
 
-    if ((config.signal as AbortSignal).aborted || !mock) {
+    if (!mock) {
       return;
     }
 
     const delay = mock.delay !== undefined ? mock.delay : this.klient.parameters.get('mock.delay');
-    if (typeof delay === 'number') {
-      return new Promise<void>((r) => {
-        setTimeout(r, delay);
+
+    request.handler = () =>
+      new Promise((resolve, reject) => {
+        const callback = () => {
+          try {
+            resolve(Mocks.renderResponse(e));
+          } catch (err) {
+            reject(err);
+          }
+        };
+
+        if (typeof delay === 'number') {
+          setTimeout(callback, delay);
+        } else {
+          callback();
+        }
       });
-    }
   }
 
-  private static handle(e: RequestEvent) {
-    const { config, context, request } = e;
-    const { mock, parameters } = context as { mock?: Mock; parameters: unknown };
+  private static renderResponse(e: RequestEvent) {
+    const { config, context } = e;
+    const { mock, parameters } = context as { mock: Mock; parameters: unknown };
 
-    if ((config.signal as AbortSignal).aborted || !mock) {
-      return;
+    // Cancel
+    if ((config.signal as AbortSignal).aborted) {
+      const err = new CanceledError();
+
+      err.message = AxiosError.ERR_CANCELED;
+      err.code = AxiosError.ERR_CANCELED;
+      err.config = e.config;
+
+      throw err;
     }
 
-    request.handler = () => {
-      const result = typeof mock.res === 'function' ? mock.res(config, parameters as ResParameters) : mock.res;
-      const { status } = result;
+    const result = typeof mock.res === 'function' ? mock.res(config, parameters as ResParameters) : mock.res;
+    const { status } = result;
 
-      if (status >= 200 && status < 400) {
-        return Promise.resolve(result as AxiosResponse);
-      }
+    // Success
+    if (status >= 200 && status < 400) {
+      return result as AxiosResponse;
+    }
 
-      const err = new AxiosError();
+    // Error
+    const err = new AxiosError();
 
-      err.message = statusCodes.getStatusText(status);
-      err.code = AxiosError.ERR_BAD_RESPONSE;
-      err.config = e.config;
-      err.response = result as AxiosResponse;
+    err.message = statusCodes.getStatusText(status);
+    err.code = AxiosError.ERR_BAD_RESPONSE;
+    err.config = e.config;
+    err.response = result as AxiosResponse;
 
-      return Promise.reject(err);
-    };
+    throw err;
   }
 }
